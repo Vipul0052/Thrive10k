@@ -1,0 +1,144 @@
+/* ═══════════════════════════════════════════════════
+   Thrive10K — Design System
+   ═══════════════════════════════════════════════════ */
+
+/* ── Reset ── */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'DM Sans', 'Geist', system-ui, -apple-system, sans-serif;
+  color: #0a0a0a;
+  background: #ffffff;
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+
+input, textarea {
+  font-family: inherit;
+  border: none;
+  outline: none;
+  background: transparent;
+}
+
+img, video {
+  display: block;
+  max-width: 100%;
+}
+
+/* ── CSS Variables ── */
+:root {
+  /* Colors */
+  --color-ink: #0a0a0a;
+  --color-ink-soft: #373a46;
+  --color-ink-muted: rgba(55, 58, 70, 0.6);
+  --color-surface: #ffffff;
+  --color-surface-raised: #fcfcfc;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(10, 10, 10, 0.1);
+  --color-accent: #f59e0b;
+  --color-accent-subtle: rgba(10, 10, 10, 0.06);
+
+  /* Gradients */
+  --gradient-dark: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+  --gradient-dark-cta: linear-gradient(160deg, #1c1c1c 0%, #2e2e2e 50%, #111 100%);
+  --gradient-text: linear-gradient(135deg, #0a0a0a 0%, #444 100%);
+
+  /* Shadows */
+  --shadow-button: inset -4px -6px 25px 0px rgba(201, 201, 201, 0.08),
+    inset 4px 4px 10px 0px rgba(29, 29, 29, 0.24);
+  --shadow-card: 0px 10px 40px 5px rgba(194, 194, 194, 0.25);
+  --shadow-elevation-1: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-elevation-2: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-elevation-3: 0 20px 60px -12px rgba(0, 0, 0, 0.12);
+
+  /* Typography */
+  --font-sans: 'DM Sans', 'Geist', system-ui, -apple-system, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif;
+
+  /* Spacing */
+  --container-max: 1200px;
+  --container-padding: 32px;
+
+  /* Radius */
+  --radius-pill: 40px;
+  --radius-card: 20px;
+  --radius-sm: 12px;
+}
+
+/* ── Utility ── */
+.container {
+  max-width: var(--container-max);
+  margin: 0 auto;
+  padding-left: var(--container-padding);
+  padding-right: var(--container-padding);
+  width: 100%;
+}
+
+/* ── Typography ── */
+.serif {
+  font-family: var(--font-serif);
+  font-style: italic;
+}
+
+.gradient-text {
+  background: var(--gradient-text);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(10, 10, 10, 0.12);
+  color: #0a0a0a;
+}
+
+/* Dark bg selection fix */
+.manifesto ::selection {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  -webkit-text-fill-color: #ffffff;
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+  :root {
+    --container-padding: 20px;
+  }
+}
