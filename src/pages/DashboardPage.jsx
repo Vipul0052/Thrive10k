@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { useNavigate, Link } from "react-router-dom";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 20 },
@@ -32,45 +32,32 @@ export default function DashboardPage() {
   const [selectedGoalId, setSelectedGoalId] = useState("");
   const [sessionStartTime, setSessionStartTime] = useState(null);
 
+  // Settings State
+  const [activeTab, setActiveTab] = useState('overview');
+  const [editName, setEditName] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  // Initialization
   useEffect(() => {
     let active = true;
 
     const fetchDashboardData = async () => {
-      // 1. Get Auth Session
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/login");
-        return;
-      }
-      
+      if (!session) { navigate("/login"); return; }
       const currentUser = session.user;
       if (active) setUser(currentUser);
 
-      // 2. Fetch Profile to get payment tier
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', currentUser.id)
-        .single();
-      
-      if (active && profileData) setProfile(profileData);
+      const { data: profileData } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+      if (active && profileData) {
+        setProfile(profileData);
+        setEditName(profileData.full_name || "");
+      }
 
-      // 3. Fetch Active Goals
-      const { data: goalsData } = await supabase
-        .from('goals')
-        .select('*')
-        .eq('user_id', currentUser.id)
-        .neq('status', 'archived')
-        .order('created_at', { ascending: false });
-
+      const { data: goalsData } = await supabase.from('goals').select('*').eq('user_id', currentUser.id).neq('status', 'archived').order('created_at', { ascending: false });
       if (active && goalsData) setGoals(goalsData);
       
-      // 4. Fetch Sessions for Heatmap & Progress
-      const { data: sessionsData } = await supabase
-        .from('sessions')
-        .select('*')
-        .eq('user_id', currentUser.id);
-
+      const { data: sessionsData } = await supabase.from('sessions').select('*').eq('user_id', currentUser.id);
       if (active && sessionsData) setSessions(sessionsData);
       
       if (active) setLoading(false);
@@ -78,35 +65,26 @@ export default function DashboardPage() {
 
     fetchDashboardData();
     
-    // Listen for sign-out
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) navigate("/login");
     });
-
-    return () => {
-      active = false;
-      subscription.unsubscribe();
-    };
+    return () => { active = false; subscription.unsubscribe(); };
   }, [navigate]);
 
   // Timer Interval
   useEffect(() => {
     let interval = null;
     if (timerActive) {
-      interval = setInterval(() => {
-        setSecondsElapsed((prev) => prev + 1);
-      }, 1000);
+      interval = setInterval(() => setSecondsElapsed((prev) => prev + 1), 1000);
     } else {
       clearInterval(interval);
     }
     return () => clearInterval(interval);
   }, [timerActive]);
 
+  // Handlers
   const handleStartTimer = () => {
-    if (!selectedGoalId) {
-      alert("Please select a goal to link this session to.");
-      return;
-    }
+    if (!selectedGoalId) { alert("Please select a target goal first."); return; }
     setTimerActive(true);
     setSessionStartTime(new Date().toISOString());
   };
@@ -117,31 +95,69 @@ export default function DashboardPage() {
     const endTime = new Date().toISOString();
 
     if (durationMinutes < 1) {
-      alert("Session too short to log (minimum 1 minute). Keep pushing next time!");
+      alert("Session too short to log (minimum 1 minute). Stay focused next time!");
       setSecondsElapsed(0);
       return;
     }
 
     const { data, error } = await supabase.from('sessions').insert([{
-      user_id: user.id,
-      goal_id: selectedGoalId,
-      category: 'deep work',
-      duration_minutes: durationMinutes,
-      start_time: sessionStartTime,
-      end_time: endTime
+      user_id: user.id, goal_id: selectedGoalId, category: 'deep work',
+      duration_minutes: durationMinutes, start_time: sessionStartTime, end_time: endTime
     }]).select();
 
     if (error) {
-      console.error(error);
-      alert("Failed to log session: " + error.message);
+      console.error(error); alert("Failed to log session: " + error.message);
     } else if (data) {
       setSessions([...sessions, data[0]]);
-      alert(`Epic! You just banked ${durationMinutes} minutes of Deep Work.`);
       setSecondsElapsed(0);
       setSessionStartTime(null);
     }
   };
 
+  const handleCreateGoal = async (e) => {
+    e.preventDefault();
+    setFormError(""); setFormLoading(true);
+
+    if (profile?.tier === 'free' && goals.length >= 3) {
+      setFormError("Free limit reached: Maximum 3 active goals.");
+      setFormLoading(false); return;
+    }
+
+    const { data, error } = await supabase.from('goals').insert([{
+      user_id: user.id, title: newGoal.title, why_statement: newGoal.why_statement, deadline: newGoal.deadline || null,
+    }]).select();
+
+    if (error) setFormError(error.message);
+    else if (data) {
+      setGoals([data[0], ...goals]);
+      setShowGoalForm(false);
+      setNewGoal({ title: "", why_statement: "", deadline: "" });
+    }
+    setFormLoading(false);
+  };
+
+  const handleUpdateProfile = async (e) => {
+    e.preventDefault(); setSettingsLoading(true);
+    await supabase.auth.updateUser({ data: { full_name: editName } });
+    await supabase.from('profiles').update({ full_name: editName }).eq('id', user.id);
+    setProfile({...profile, full_name: editName});
+    alert("Profile saved successfully.");
+    setSettingsLoading(false);
+  };
+  
+  const handleUpdatePassword = async (e) => {
+    e.preventDefault();
+    if (editPassword.length < 6) { alert("Password must be 6+ characters."); return; }
+    setSettingsLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: editPassword });
+    if (error) alert("Error: " + error.message);
+    else { alert("Password updated securely."); setEditPassword(""); }
+    setSettingsLoading(false);
+  };
+
+  const handleLogout = async () => { await supabase.auth.signOut(); navigate("/"); };
+
+  // Utilities
   const formatTime = (totalSeconds) => {
     const hrs = Math.floor(totalSeconds / 3600);
     const mins = Math.floor((totalSeconds % 3600) / 60);
@@ -151,31 +167,28 @@ export default function DashboardPage() {
   };
 
   const getGoalHours = (goalId) => {
-    const totalMinutes = sessions.filter(s => s.goal_id === goalId && s.duration_minutes).reduce((acc, s) => acc + s.duration_minutes, 0);
+    const totalMinutes = sessions.filter(s => s.goal_id === goalId).reduce((acc, s) => acc + s.duration_minutes, 0);
     return (totalMinutes / 60).toFixed(1);
   };
 
   const getGoalProgress = (goalId) => {
-    const totalMinutes = sessions.filter(s => s.goal_id === goalId && s.duration_minutes).reduce((acc, s) => acc + s.duration_minutes, 0);
-    return Math.min((totalMinutes / 60) / 100 * 100, 100); // UI visual strictly tracks progress to 100 hours
+    const totalMinutes = sessions.filter(s => s.goal_id === goalId).reduce((acc, s) => acc + s.duration_minutes, 0);
+    return Math.min((totalMinutes / 60) / 100 * 100, 100); 
   };
 
   const renderHeatmap = () => {
     const days = [];
     const today = new Date();
     const sessionMap = {};
-    
     sessions.forEach(s => {
-      if (!s.start_time || !s.duration_minutes) return;
+      if (!s.start_time) return;
       const dateStr = new Date(s.start_time).toISOString().split('T')[0];
       sessionMap[dateStr] = (sessionMap[dateStr] || 0) + s.duration_minutes;
     });
 
     for (let i = 59; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+      const d = new Date(today); d.setDate(today.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
-      
       const mins = sessionMap[dateStr] || 0;
       
       let bg = "rgba(255,255,255,0.03)";
@@ -184,254 +197,312 @@ export default function DashboardPage() {
       if (mins >= 60) bg = "rgba(34,197,94,1)";
 
       days.push(
-        <div 
-          key={dateStr} 
-          title={`${dateStr}: ${mins} mins logged`}
-          style={{ width: "100%", paddingTop: "100%", background: bg, borderRadius: "2px", transition: "transform 0.1s", cursor: "crosshair" }}
-          onMouseOver={(e) => { e.target.style.transform = "scale(1.3)"; e.target.style.zIndex = 10; e.target.style.position = "relative"; e.target.style.boxShadow = "0 4px 12px rgba(0,0,0,0.5)"; }}
-          onMouseOut={(e) => { e.target.style.transform = "scale(1)"; e.target.style.zIndex = 1; e.target.style.position = "static"; e.target.style.boxShadow = "none"; }}
-        ></div>
+        <div key={dateStr} className="heatmap-cell" style={{ background: bg }} title={`${dateStr}: ${mins} mins`} />
       );
     }
     return days;
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
-  };
-
-  const handleCreateGoal = async (e) => {
-    e.preventDefault();
-    setFormError("");
-    setFormLoading(true);
-
-    if (profile?.tier === 'free' && goals.length >= 3) {
-      setFormError("Free tier limit reached: Maximum 3 active goals. Please upgrade to Pro.");
-      setFormLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('goals')
-      .insert([
-        {
-          user_id: user.id,
-          title: newGoal.title,
-          why_statement: newGoal.why_statement,
-          deadline: newGoal.deadline || null,
-        }
-      ])
-      .select();
-
-    if (error) {
-      setFormError(error.message);
-    } else if (data) {
-      setGoals([data[0], ...goals]); // Add to top of list
-      setShowGoalForm(false);
-      setNewGoal({ title: "", why_statement: "", deadline: "" }); // Reset
-    }
-    
-    setFormLoading(false);
-  };
-
-  const checkCanCreate = () => {
-    if (profile?.tier === 'pro' || profile?.tier === 'lifetime') return true;
-    return goals.length < 3;
-  };
-
-  if (loading) {
-    return (
-      <div className="container" style={{ padding: "120px 0", minHeight: "100vh", display: "flex", justifyContent: "center" }}>
-        <p style={{ color: "var(--color-ink-muted)", fontStyle: "italic" }}>Loading protocol...</p>
-      </div>
-    );
-  }
-
-  if (!user) return null;
+  if (loading) return (
+    <div style={{ backgroundColor: "#050505", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <p style={{ color: "#666", letterSpacing: "2px", textTransform: "uppercase", fontSize: "14px" }}>Initializing Dashboard...</p>
+    </div>
+  );
 
   return (
-    <div style={{ paddingTop: "100px", minHeight: "100vh", paddingBottom: "100px" }}>
-      <div className="container">
+    <div className="dashboard-root">
+      <style dangerouslySetInnerHTML={{__html: `
+        .dashboard-root { background-color: #050505; color: #fff; min-height: 100vh; font-family: 'Inter', system-ui, sans-serif; }
+        .dash-nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 48px; background: rgba(5,5,5,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.05); position: sticky; top: 0; z-index: 50; }
+        .nav-actions { display: flex; gap: 24px; align-items: center; }
+        .tab-pills { display: flex; background: rgba(255,255,255,0.03); padding: 4px; border-radius: 100px; border: 1px solid rgba(255,255,255,0.05); }
+        .tab-pills button { background: transparent; color: #888; border: none; padding: 8px 24px; border-radius: 100px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.3s; }
+        .tab-pills button.active { background: rgba(255,255,255,0.1); color: #fff; }
+        .logout-btn { background: transparent; color: #888; border: none; cursor: pointer; font-size: 14px; font-weight: 600; transition: color 0.2s; }
+        .logout-btn:hover { color: #ef4444; }
         
-        {/* === HEADER === */}
-        <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={0} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "48px", borderBottom: "1px solid var(--color-border)", paddingBottom: "24px", flexWrap: "wrap", gap: "20px" }}>
-          <div>
-            <h1 className="page-hero__heading" style={{ fontSize: "36px", margin: 0 }}>
-              Welcome back, <span className="serif gradient-text">{profile?.full_name || user.email.split('@')[0]}</span>
-            </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "12px" }}>
-              <span style={{ fontSize: "12px", fontWeight: 800, background: profile?.tier === 'free' ? "var(--color-surface-raised)" : "var(--gradient-dark-cta)", color: profile?.tier === 'free' ? "var(--color-ink-muted)" : "#fff", padding: "4px 10px", borderRadius: "20px", textTransform: "uppercase", letterSpacing: "1px", border: profile?.tier === 'free' ? "1px solid var(--color-border)" : "none" }}>
-                {profile?.tier || 'Free'} Plan
-              </span>
-              <span style={{ fontSize: "14px", color: "var(--color-ink-soft)" }}>Level 1 unlocked</span>
-            </div>
-          </div>
-          <div>
-            <button onClick={handleLogout} style={{ background: "transparent", color: "var(--color-ink-muted)", border: "1px solid var(--color-border)", padding: "10px 20px", borderRadius: "var(--radius-pill)", cursor: "pointer", fontSize: "14px", fontWeight: 600, transition: "all 0.2s" }} onMouseOver={(e) => {e.target.style.color = "var(--color-ink)"; e.target.style.borderColor = "var(--color-ink-soft)"}} onMouseOut={(e) => {e.target.style.color = "var(--color-ink-muted)"; e.target.style.borderColor = "var(--color-border)"}}>
-              Sign Out
-            </button>
-          </div>
-        </motion.div>
+        .dash-container { max-width: 1400px; margin: 0 auto; padding: 48px; }
+        .dash-grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 40px; align-items: start; }
+        
+        .dash-card { background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); position: relative; overflow: hidden; }
+        .timer-hud::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #22c55e, #10b981); }
+        .timer-display { font-size: clamp(64px, 8vw, 120px); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; margin: 32px 0; background: linear-gradient(to bottom right, #fff, #888); -webkit-background-clip: text; -webkit-text-fill-color: transparent; transition: all 0.3s ease; text-align: center; }
+        .timer-display.active { background: #22c55e; -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-shadow: 0 0 80px rgba(34,197,94,0.4); transform: scale(1.05); }
+        
+        .custom-select { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 16px; border-radius: 12px; font-size: 16px; outline: none; transition: border-color 0.2s; appearance: none; text-align: center; font-weight: 600; }
+        .custom-select:focus { border-color: #22c55e; }
+        .custom-select:disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .btn-primary { background: #22c55e; color: #000; border: none; padding: 16px 32px; border-radius: 100px; font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s; width: 100%; }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-danger { background: #ef4444; color: #fff; border: none; padding: 16px 32px; border-radius: 100px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3); transition: all 0.2s; }
+        .btn-danger:active { transform: scale(0.98); }
+        
+        .heatmap-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; margin-top: 24px; }
+        .heatmap-cell { width: 100%; aspect-ratio: 1; border-radius: 4px; transition: all 0.2s ease; cursor: crosshair; }
+        .heatmap-cell:hover { transform: scale(1.4); z-index: 10; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+        
+        .goal-item { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; padding: 24px; transition: all 0.3s; }
+        .goal-item:hover { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.1); transform: translateY(-2px); }
+        
+        .tier-badge { font-size: 12px; font-weight: 800; padding: 6px 16px; border-radius: 100px; text-transform: uppercase; letter-spacing: 1px; }
+        .tier-badge.free { background: rgba(255,255,255,0.05); color: #888; border: 1px dashed rgba(255,255,255,0.2); }
+        .tier-badge.pro { background: linear-gradient(135deg, #22c55e, #10b981); color: #000; box-shadow: 0 4px 12px rgba(34,197,94,0.3); border: none; }
+        
+        /* Premium Layout Adjustments */
+        .settings-panel { max-width: 600px; margin: 0 auto; display: flex; flexDirection: column; gap: 32px; }
+        .form-label { display: block; font-size: 13px; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; }
+        .form-input { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 16px; border-radius: 12px; font-size: 16px; transition: all 0.2s; outline: none; }
+        .form-input:focus { border-color: #22c55e; background: rgba(0,0,0,0.5); }
 
-        {/* === MAIN DASHBOARD GRID === */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))", gap: "32px", alignItems: "start" }}>
-          
-          {/* LEFT: THE GOAL STACK */}
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={1}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px" }}>
-              <h2 style={{ fontSize: "24px", fontWeight: 600, display: "flex", gap: "12px", alignItems: "center" }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                The Goal Stack
-                <span style={{ fontSize: "14px", fontWeight: "normal", color: "var(--color-ink-muted)" }}>
-                  ({goals.length}{profile?.tier === 'free' ? ' / 3' : ''})
-                </span>
-              </h2>
+        @media (max-width: 1024px) {
+          .dash-grid { grid-template-columns: 1fr; }
+          .dash-container { padding: 32px; }
+        }
+        @media (max-width: 768px) {
+          .dash-nav { padding: 20px; flex-direction: column; gap: 20px; }
+          .nav-actions { width: 100%; justify-content: space-between; }
+          .dash-container { padding: 16px; }
+          .dash-card { padding: 24px; border-radius: 20px; }
+          .timer-display { font-size: 64px; }
+          .heatmap-grid { gap: 4px; }
+          .heatmap-cell { border-radius: 2px; }
+        }
+      `}} />
+
+      {/* FIXED TOP NAVIGATION */}
+      <nav className="dash-nav">
+        <Link to="/" style={{ textDecoration: 'none' }}>
+          <h2 style={{ fontSize: '24px', margin: 0, fontWeight: 800, color: '#fff', letterSpacing: '-0.5px' }}>
+            THRIVE<span style={{ color: '#22c55e' }}>10K</span>
+          </h2>
+        </Link>
+        <div className="nav-actions">
+          <div className="tab-pills">
+            <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}>Overview</button>
+            <button className={activeTab === 'settings' ? 'active' : ''} onClick={() => setActiveTab('settings')}>Settings</button>
+          </div>
+          <button className="logout-btn" onClick={handleLogout}>Sign Out</button>
+        </div>
+      </nav>
+
+      {/* DASHBOARD CONTAINER */}
+      <div className="dash-container">
+        <AnimatePresence mode="wait">
+          {activeTab === 'overview' ? (
+            <motion.div key="overview" initial="hidden" animate="visible" exit={{ opacity: 0 }} variants={fadeUp} className="dash-grid">
               
-              {!showGoalForm && (
-                <button 
-                  onClick={() => checkCanCreate() ? setShowGoalForm(true) : alert("Free limit reached! Upgrade to Pro coming soon.")}
-                  style={{ background: "#22c55e", color: "#000", border: "none", padding: "8px 16px", borderRadius: "100px", cursor: "pointer", fontSize: "13px", fontWeight: 700 }}
-                >
-                  + New Goal
-                </button>
-              )}
-            </div>
+              {/* LEFT COLUMN: THE WORKSPACE */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
+                
+                {/* 1. DEEP WORK LOGGER */}
+                <div className="dash-card timer-hud">
+                  <h3 style={{ fontSize: "16px", color: "#888", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "24px", fontWeight: 700 }}>Deep Flow State</h3>
+                  
+                  <select 
+                    className="custom-select"
+                    value={selectedGoalId}
+                    onChange={(e) => setSelectedGoalId(e.target.value)}
+                    disabled={timerActive}
+                  >
+                    <option value="" disabled>-- Link session to a Goal --</option>
+                    {goals.map(g => <option key={g.id} value={g.id}>{g.title}</option>)}
+                  </select>
 
-            {/* UPGRADE LOCK FOR FREE USERS AT 3 GOALS */}
-            {profile?.tier === 'free' && goals.length >= 3 && !showGoalForm && (
-              <div style={{ background: "rgba(34,197,94,0.05)", border: "1px dashed #22c55e", padding: "24px", borderRadius: "var(--radius-card)", textAlign: "center", marginBottom: "24px" }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: "12px", display: "inline-block" }}>
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-                <h4 style={{ margin: "0 0 8px 0" }}>Max Goals Reached</h4>
-                <p style={{ fontSize: "14px", color: "var(--color-ink-soft)", margin: "0 0 16px 0" }}>Focus on your current 3 goals, or upgrade to add an infinite stack.</p>
-                <Link to="/pricing" style={{ background: "var(--color-ink)", color: "var(--color-surface)", padding: "8px 24px", borderRadius: "40px", fontSize: "13px", fontWeight: 700, textDecoration: "none", display: "inline-block" }}>Upgrade to Pro →</Link>
+                  <div className={`timer-display ${timerActive ? 'active' : ''}`}>
+                    {formatTime(secondsElapsed)}
+                  </div>
+
+                  {!timerActive ? (
+                    <button onClick={handleStartTimer} className="btn-primary">Initiate Deep Work</button>
+                  ) : (
+                    <button onClick={handleStopTimer} className="btn-danger">End & Save Session</button>
+                  )}
+                </div>
+
+                {/* 2. THE GOAL STACK */}
+                <div className="dash-card">
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
+                    <h3 style={{ fontSize: "24px", fontWeight: 700, margin: 0 }}>The Goal Stack</h3>
+                    {!showGoalForm && (
+                      <button 
+                        onClick={() => profile?.tier === 'free' && goals.length >= 3 ? alert("Free limit reached! Upgrade inside Settings.") : setShowGoalForm(true)}
+                        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#fff", padding: "8px 16px", borderRadius: "100px", cursor: "pointer", fontSize: "13px", fontWeight: 600, transition: "background 0.2s" }}
+                        onMouseOver={e=>e.target.style.background="rgba(255,255,255,0.1)"} onMouseOut={e=>e.target.style.background="rgba(255,255,255,0.05)"}
+                      >
+                        + Add Target
+                      </button>
+                    )}
+                  </div>
+
+                  {showGoalForm && (
+                    <div style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "16px", padding: "24px", marginBottom: "32px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "24px" }}>
+                        <h4 style={{ margin: 0, fontSize: "16px", color: "#fff" }}>Define New Target</h4>
+                        <button onClick={() => setShowGoalForm(false)} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: "20px" }}>&times;</button>
+                      </div>
+                      {formError && <div style={{ color: "#ef4444", fontSize: "13px", padding: "12px", background: "rgba(239,68,68,0.1)", borderRadius: "8px", marginBottom: "16px" }}>{formError}</div>}
+                      <form onSubmit={handleCreateGoal}>
+                        <div style={{ marginBottom: "16px" }}>
+                          <label className="form-label">Goal Title *</label>
+                          <input className="form-input" type="text" placeholder="e.g. Master React Native" required value={newGoal.title} onChange={(e) => setNewGoal({...newGoal, title: e.target.value})} />
+                        </div>
+                        <div style={{ marginBottom: "16px" }}>
+                          <label className="form-label">Core Motivation *</label>
+                          <textarea className="form-input" rows="2" placeholder="Why does this matter?" required value={newGoal.why_statement} onChange={(e) => setNewGoal({...newGoal, why_statement: e.target.value})}></textarea>
+                        </div>
+                        <div style={{ marginBottom: "24px" }}>
+                          <label className="form-label">Deadline</label>
+                          <input className="form-input" type="date" value={newGoal.deadline} onChange={(e) => setNewGoal({...newGoal, deadline: e.target.value})} />
+                        </div>
+                        <button type="submit" className="btn-primary" disabled={formLoading} style={{ padding: "12px" }}>
+                          {formLoading ? "Saving..." : "Lock into Stack"}
+                        </button>
+                      </form>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                    {goals.length === 0 && !showGoalForm ? (
+                      <div style={{ padding: "40px", textAlign: "center", border: "1px dashed rgba(255,255,255,0.1)", borderRadius: "16px" }}>
+                        <p style={{ color: "#666", margin: 0 }}>Stack is empty. Create a target to begin.</p>
+                      </div>
+                    ) : (
+                      goals.map((goal) => (
+                        <div key={goal.id} className="goal-item">
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
+                            <h3 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "#fff" }}>{goal.title}</h3>
+                            {goal.deadline && (
+                              <span style={{ fontSize: "12px", color: "#888", background: "rgba(0,0,0,0.5)", padding: "4px 8px", borderRadius: "4px" }}>
+                                Due {new Date(goal.deadline).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                          <p style={{ color: "#888", fontSize: "14px", lineHeight: 1.5, margin: "0 0 20px 0", fontStyle: "italic" }}>
+                            "{goal.why_statement}"
+                          </p>
+                          <div style={{ display: "flex", gap: "8px" }}>
+                            <div style={{ height: "4px", flex: 1, background: "rgba(255,255,255,0.05)", borderRadius: "2px", overflow: "hidden" }}>
+                              <div style={{ height: "100%", width: `${getGoalProgress(goal.id)}%`, background: "#22c55e", transition: "width 1s ease-out" }}></div>
+                            </div>
+                          </div>
+                          <p style={{ fontSize: "12px", color: "#666", marginTop: "12px", margin: 0, textAlign: "right" }}>{getGoalHours(goal.id)} hours banked</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
 
-            {/* CREATE GOAL FORM */}
-            {showGoalForm && (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} style={{ background: "var(--color-surface-raised)", border: "1px solid var(--color-border)", padding: "24px", borderRadius: "var(--radius-card)", marginBottom: "32px", overflow: "hidden" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
-                  <h3 style={{ fontSize: "18px", margin: 0 }}>Define your mission</h3>
-                  <button onClick={() => setShowGoalForm(false)} style={{ background: "none", border: "none", color: "var(--color-ink-muted)", cursor: "pointer", fontSize: "20px", padding: 0, lineHeight: 1 }}>&times;</button>
-                </div>
+              {/* RIGHT COLUMN: ANALYTICS & PROFILE */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "40px" }}>
                 
-                {formError && <div style={{ color: "#ef4444", fontSize: "13px", padding: "10px", background: "rgba(239,68,68,0.1)", borderRadius: "8px", marginBottom: "16px" }}>{formError}</div>}
-                
-                <form onSubmit={handleCreateGoal}>
-                  <div className="auth-form__field" style={{ marginBottom: "16px" }}>
-                    <label className="auth-form__label">Goal Title *</label>
-                    <input className="auth-form__input" type="text" placeholder="e.g. Master React Native" required value={newGoal.title} onChange={(e) => setNewGoal({...newGoal, title: e.target.value})} />
+                {/* 3. PROFILE QUICK GLANCE */}
+                <div className="dash-card" style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+                  <div style={{ width: "64px", height: "64px", borderRadius: "50%", background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px", fontWeight: 800, color: "#fff" }}>
+                    {profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : user?.email.charAt(0).toUpperCase()}
                   </div>
-                  <div className="auth-form__field" style={{ marginBottom: "16px" }}>
-                    <label className="auth-form__label">The "Why" *</label>
-                    <textarea className="auth-form__input auth-form__textarea" rows="2" placeholder="Why does this matter to you?" required value={newGoal.why_statement} onChange={(e) => setNewGoal({...newGoal, why_statement: e.target.value})}></textarea>
-                  </div>
-                  <div className="auth-form__field" style={{ marginBottom: "24px" }}>
-                    <label className="auth-form__label">Deadline (Optional)</label>
-                    <input className="auth-form__input" type="date" value={newGoal.deadline} onChange={(e) => setNewGoal({...newGoal, deadline: e.target.value})} />
-                  </div>
-                  <button type="submit" className="auth-form__submit" disabled={formLoading} style={{ padding: "12px", width: "100%" }}>
-                    {formLoading ? "Saving..." : "Lock it in"}
-                  </button>
-                </form>
-              </motion.div>
-            )}
-
-            {/* GOALS LIST */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              {goals.length === 0 && !showGoalForm ? (
-                <div style={{ padding: "40px", textAlign: "center", border: "1px dashed var(--color-border)", borderRadius: "var(--radius-card)", background: "rgba(255,255,255,0.01)" }}>
-                  <p style={{ color: "var(--color-ink-soft)", margin: 0 }}>Your stack is empty. Create your first goal to begin your journey.</p>
-                </div>
-              ) : (
-                goals.map((goal) => (
-                  <div key={goal.id} style={{ background: "var(--color-surface-raised)", border: "1px solid var(--color-border)", padding: "24px", borderRadius: "16px", transition: "transform 0.2s, box-shadow 0.2s" }} className="goal-card">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-                      <h3 style={{ fontSize: "18px", fontWeight: 600, margin: 0 }}>{goal.title}</h3>
-                      {goal.deadline && (
-                        <span style={{ fontSize: "12px", color: "var(--color-ink-muted)", border: "1px solid var(--color-border)", padding: "2px 8px", borderRadius: "4px" }}>
-                          Due {new Date(goal.deadline).toLocaleDateString()}
-                        </span>
+                  <div>
+                    <h3 style={{ margin: "0 0 8px 0", fontSize: "20px", color: "#fff" }}>{profile?.full_name || "Welcome Back"}</h3>
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                      <span className={`tier-badge ${profile?.tier === 'pro' ? 'pro' : 'free'}`}>
+                        {profile?.tier || 'Free'} Plan
+                      </span>
+                      {profile?.tier === 'free' && (
+                        <button onClick={() => setActiveTab('settings')} style={{ background: "none", border: "none", color: "#22c55e", fontSize: "13px", fontWeight: 600, cursor: "pointer", padding: 0 }}>
+                          Upgrade Now →
+                        </button>
                       )}
                     </div>
-                    <p style={{ color: "var(--color-ink-soft)", fontSize: "14px", lineHeight: 1.5, margin: "0 0 16px 0", fontStyle: "italic" }}>
-                      "{goal.why_statement}"
-                    </p>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      <div style={{ height: "4px", flex: 1, background: "rgba(34,197,94,0.1)", borderRadius: "2px", overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${getGoalProgress(goal.id)}%`, background: "#22c55e", transition: "width 1s ease-out" }}></div>
-                      </div>
-                    </div>
-                    <p style={{ fontSize: "12px", color: "var(--color-ink-muted)", marginTop: "8px", margin: 0, textAlign: "right" }}>{getGoalHours(goal.id)} hours logged</p>
                   </div>
-                ))
-              )}
-            </div>
-          </motion.div>
+                </div>
 
-          {/* RIGHT SIDE: TIMER & HEATMAP PLACEHOLDERS */}
-          <motion.div initial="hidden" animate="visible" variants={fadeUp} custom={2} style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
+                {/* 4. CONSISTENCY HEATMAP */}
+                <div className="dash-card">
+                  <h3 style={{ fontSize: "16px", color: "#888", textTransform: "uppercase", letterSpacing: "1px", margin: 0, fontWeight: 700, display: "flex", alignItems: "center", gap: "8px" }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v6h6"/></svg>
+                    60-Day Consistency
+                  </h3>
+                  
+                  <div className="heatmap-grid">
+                    {renderHeatmap()}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#666", marginTop: "16px" }}>
+                    <span>Less</span>
+                    <div style={{ display: "flex", gap: "4px" }}>
+                      <div style={{ width: "12px", height: "12px", background: "rgba(255,255,255,0.03)", borderRadius: "2px" }}></div>
+                      <div style={{ width: "12px", height: "12px", background: "rgba(34,197,94,0.3)", borderRadius: "2px" }}></div>
+                      <div style={{ width: "12px", height: "12px", background: "rgba(34,197,94,0.6)", borderRadius: "2px" }}></div>
+                      <div style={{ width: "12px", height: "12px", background: "rgba(34,197,94,1)", borderRadius: "2px" }}></div>
+                    </div>
+                    <span>More</span>
+                  </div>
+                </div>
+
+              </div>
+
+            </motion.div>
+          ) : (
             
-            {/* Deep Work Logger */}
-            <div style={{ background: "var(--color-surface-raised)", border: "1px solid var(--color-border)", padding: "32px", borderRadius: "var(--radius-card)", textAlign: "center", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "4px", background: "var(--gradient-dark-cta)" }}></div>
-              <h3 style={{ fontSize: "20px", marginBottom: "16px", color: "var(--color-ink)" }}>Deep Work Logger</h3>
+            /* SETTINGS PANEL */
+            <motion.div key="settings" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="settings-panel">
+              <div style={{ textAlign: "center", marginBottom: "16px" }}>
+                <h2 style={{ fontSize: "32px", fontWeight: 800, margin: "0 0 8px 0" }}>App Settings</h2>
+                <p style={{ color: "#888", margin: 0 }}>Manage your secure preferences and subscription tier.</p>
+              </div>
               
-              <div style={{ marginBottom: "24px" }}>
-                <select 
-                  className="auth-form__input" 
-                  style={{ textAlign: "center", cursor: "pointer" }}
-                  value={selectedGoalId}
-                  onChange={(e) => setSelectedGoalId(e.target.value)}
-                  disabled={timerActive}
-                >
-                  <option value="" disabled>-- Link to a Goal --</option>
-                  {goals.map(g => (
-                    <option key={g.id} value={g.id}>{g.title}</option>
-                  ))}
-                </select>
+              <div className="dash-card">
+                <h3 style={{ fontSize: "18px", marginBottom: "24px", color: "#fff", fontWeight: 700 }}>Profile Identity</h3>
+                <form onSubmit={handleUpdateProfile}>
+                  <div style={{ marginBottom: "16px" }}>
+                    <label className="form-label">Full Name</label>
+                    <input className="form-input" type="text" value={editName} onChange={(e) => setEditName(e.target.value)} required />
+                  </div>
+                  <div style={{ marginBottom: "24px" }}>
+                    <label className="form-label">Account Email (Immutable)</label>
+                    <input className="form-input" type="email" value={user.email} disabled />
+                  </div>
+                  <button type="submit" className="btn-primary" disabled={settingsLoading} style={{ padding: "12px" }}>
+                    {settingsLoading ? "Saving..." : "Update Profile"}
+                  </button>
+                </form>
               </div>
 
-              <div style={{ fontFamily: "monospace", fontSize: "48px", fontWeight: 700, margin: "24px 0", color: timerActive ? "#22c55e" : "var(--color-ink)", fontVariantNumeric: "tabular-nums" }}>
-                {formatTime(secondsElapsed)}
+              <div className="dash-card">
+                <h3 style={{ fontSize: "18px", marginBottom: "24px", color: "#fff", fontWeight: 700 }}>Security Protocol</h3>
+                <form onSubmit={handleUpdatePassword}>
+                  <div style={{ marginBottom: "24px" }}>
+                    <label className="form-label">New Password</label>
+                    <input className="form-input" type="password" placeholder="Requires minimum 6 characters" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} required />
+                  </div>
+                  <button type="submit" className="btn-primary" disabled={settingsLoading} style={{ padding: "12px" }}>
+                    {settingsLoading ? "Securing..." : "Update Password"}
+                  </button>
+                </form>
               </div>
 
-              {!timerActive ? (
-                <button 
-                  onClick={handleStartTimer}
-                  style={{ background: "var(--gradient-dark-cta)", color: "#fff", border: "none", padding: "14px 32px", borderRadius: "100px", fontSize: "15px", fontWeight: 600, cursor: "pointer", width: "100%", boxShadow: "var(--shadow-button)", transition: "all 0.2s" }}
-                >
-                  Start Deep Work
-                </button>
-              ) : (
-                <button 
-                  onClick={handleStopTimer}
-                  style={{ background: "#ef4444", color: "#fff", border: "none", padding: "14px 32px", borderRadius: "100px", fontSize: "15px", fontWeight: 600, cursor: "pointer", width: "100%", boxShadow: "0 4px 14px rgba(239, 68, 68, 0.4)", transition: "all 0.2s" }}
-                >
-                  Stop & Log Time
-                </button>
-              )}
-            </div>
-
-            {/* Streak Heatmap Component */}
-            <div style={{ background: "var(--color-surface-raised)", border: "1px solid var(--color-border)", padding: "32px", borderRadius: "var(--radius-card)" }}>
-              <h3 style={{ fontSize: "16px", marginBottom: "20px", display: "flex", alignItems: "center", gap: "8px", color: "var(--color-ink-muted)" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v6h6"/></svg>
-                Consistency Heatmap
-              </h3>
-              
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(12, 1fr)", gap: "4px" }}>
-                {renderHeatmap()}
+              <div className="dash-card" style={{ border: profile?.tier === 'free' ? "1px dashed rgba(255,255,255,0.2)" : "1px solid rgba(255,255,255,0.05)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+                  <div>
+                    <h3 style={{ fontSize: "18px", margin: "0 0 8px 0", color: "#fff", fontWeight: 700 }}>Billing & Licensing</h3>
+                    <p style={{ color: "#888", fontSize: "14px", margin: 0, maxWidth: "300px", lineHeight: 1.5 }}>
+                      {profile?.tier === 'free' ? "You are currently restricted to 3 active goals. Upgrade to Pro to unlock native scaling and infinite goal stacks." : "You possess an unhindered Elite license. All features are permanently unlocked."}
+                    </p>
+                  </div>
+                  <span className={`tier-badge ${profile?.tier === 'pro' ? 'pro' : 'free'}`}>
+                    {profile?.tier || 'Free'} Plan
+                  </span>
+                </div>
+                
+                {profile?.tier === 'free' && (
+                  <Link to="/pricing" style={{ display: "block", background: "#fff", color: "#000", padding: "12px 24px", borderRadius: "100px", fontSize: "14px", fontWeight: 700, textDecoration: "none", textAlign: "center", marginTop: "24px", transition: "transform 0.2s" }} onMouseOver={e=>e.target.style.transform="scale(1.02)"} onMouseOut={e=>e.target.style.transform="scale(1)"}>
+                    Upgrade to Pro Access →
+                  </Link>
+                )}
               </div>
-              <p style={{ fontSize: "12px", color: "var(--color-ink-muted)", marginTop: "16px", textAlign: "right", fontStyle: "italic" }}>Last 60 days of consistency</p>
-            </div>
-
-          </motion.div>
-        </div>
-
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
