@@ -44,10 +44,15 @@ export default function Navbar() {
               {link.label}
             </Link>
           ))}
+          {!user && (
+            <Link to="/login" className="navbar__link">
+              Sign In
+            </Link>
+          )}
         </nav>
 
-        <Link to={user ? "/dashboard" : "/login"} className="navbar__cta">
-          {user ? "Dashboard" : "Sign In"}
+        <Link to={user ? "/dashboard" : "/signup"} className="navbar__cta">
+          {user ? "Dashboard" : "Get Started"}
         </Link>
 
         {/* Mobile toggle */}
@@ -73,6 +78,15 @@ export default function Navbar() {
             {link.label}
           </Link>
         ))}
+        {!user && (
+          <Link
+            to="/login"
+            className="navbar__mobile-link"
+            onClick={() => setOpen(false)}
+          >
+            Sign In
+          </Link>
+        )}
         <Link
           to={user ? "/dashboard" : "/signup"}
           className="navbar__mobile-cta"

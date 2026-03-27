@@ -17,9 +17,25 @@ export default function ContactPage() {
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (e) => {
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setSubmitted(true);
+    setLoading(true);
+
+    const formData = new FormData(e.target);
+    // Replace with your Web3Forms access key
+    formData.append("access_key", "6a4c03ac-289c-4725-a915-291ae54624e5"); 
+
+    const response = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
+      body: formData
+    }).then((res) => res.json());
+
+    if (response.success) {
+      setSubmitted(true);
+    }
+    setLoading(false);
   };
 
   return (
@@ -76,6 +92,7 @@ export default function ContactPage() {
                       <label className="auth-form__label" htmlFor="contact-name">Name</label>
                       <input
                         id="contact-name"
+                        name="name"
                         className="auth-form__input"
                         type="text"
                         placeholder="Your name"
@@ -88,6 +105,7 @@ export default function ContactPage() {
                       <label className="auth-form__label" htmlFor="contact-email">Email</label>
                       <input
                         id="contact-email"
+                        name="email"
                         className="auth-form__input"
                         type="email"
                         placeholder="you@example.com"
@@ -101,6 +119,7 @@ export default function ContactPage() {
                     <label className="auth-form__label" htmlFor="contact-subject">Subject</label>
                     <input
                       id="contact-subject"
+                      name="subject"
                       className="auth-form__input"
                       type="text"
                       placeholder="What's this about?"
@@ -113,6 +132,7 @@ export default function ContactPage() {
                     <label className="auth-form__label" htmlFor="contact-message">Message</label>
                     <textarea
                       id="contact-message"
+                      name="message"
                       className="auth-form__input auth-form__textarea"
                       placeholder="Tell us more..."
                       value={message}
@@ -121,8 +141,8 @@ export default function ContactPage() {
                       required
                     />
                   </div>
-                  <button type="submit" className="auth-form__submit">
-                    Send Message →
+                  <button type="submit" className="auth-form__submit" disabled={loading}>
+                    {loading ? "Sending..." : "Send Message →"}
                   </button>
                 </form>
               )}
@@ -145,7 +165,7 @@ export default function ContactPage() {
                 <h4>Email</h4>
                 <p>hello@thrive10k.com</p>
               </div>
-              <a href="https://discord.gg/TuGXjPvYhZ" target="_blank" rel="noopener noreferrer" className="contact__card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
+              <a href="https://discord.gg/gARFGAjzRx" target="_blank" rel="noopener noreferrer" className="contact__card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
                 </svg>
