@@ -1,4 +1,6 @@
 import { motion } from "motion/react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -10,6 +12,18 @@ const fadeUp = {
 };
 
 export default function CTA() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+
+  const handleStart = (e) => {
+    e.preventDefault();
+    if (email) {
+      navigate(`/signup?email=${encodeURIComponent(email)}`);
+    } else {
+      navigate("/signup");
+    }
+  };
+
   return (
     <section className="cta-section" id="cta">
       <div className="container">
@@ -31,14 +45,17 @@ export default function CTA() {
             Join 1,020+ ambitious builders tracking their mastery. Free forever
             — no credit card, no catch. Just your commitment.
           </p>
-          <div className="cta-section__input-group">
+          <form onSubmit={handleStart} className="cta-section__input-group">
             <input
               type="email"
               placeholder="your@email.com"
               className="cta-section__input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
             />
-            <button className="cta-section__btn">Start for Free →</button>
-          </div>
+            <button type="submit" className="cta-section__btn">Start for Free →</button>
+          </form>
         </motion.div>
       </div>
     </section>

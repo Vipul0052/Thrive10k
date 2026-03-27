@@ -62,6 +62,10 @@
   transition: background 0.3s ease;
 }
 
+.navbar--open {
+  background: #ffffff;
+}
+
 .navbar__inner {
   display: flex;
   align-items: center;

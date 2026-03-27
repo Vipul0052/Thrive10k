@@ -1,9 +1,23 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { supabase } from "../lib/supabase";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const navLinks = [
     { label: "Features", to: "/features" },
@@ -12,7 +26,7 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="navbar">
+    <header className={`navbar ${open ? "navbar--open" : ""}`}>
       <div className="navbar__inner container">
         <Link to="/" className="navbar__logo">
           <span className="navbar__logo-text serif">thrive</span>
@@ -32,8 +46,8 @@ export default function Navbar() {
           ))}
         </nav>
 
-        <Link to="/login" className="navbar__cta">
-          Sign In
+        <Link to={user ? "/dashboard" : "/login"} className="navbar__cta">
+          {user ? "Dashboard" : "Sign In"}
         </Link>
 
         {/* Mobile toggle */}
@@ -59,8 +73,12 @@ export default function Navbar() {
             {link.label}
           </Link>
         ))}
-        <Link to="/signup" className="navbar__mobile-cta" onClick={() => setOpen(false)}>
-          Get Started
+        <Link
+          to={user ? "/dashboard" : "/signup"}
+          className="navbar__mobile-cta"
+          onClick={() => setOpen(false)}
+        >
+          {user ? "Dashboard" : "Get Started"}
         </Link>
       </nav>
     </header>

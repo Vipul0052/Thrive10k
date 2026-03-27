@@ -12,6 +12,10 @@ import ChangelogPage from "./pages/ChangelogPage";
 import ContactPage from "./pages/ContactPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import TermsPage from "./pages/TermsPage";
+import DashboardPage from "./pages/DashboardPage";
+import VerifyEmailPage from "./pages/VerifyEmailPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import "./index.css";
 import "./App.css";
 
@@ -30,6 +34,10 @@ const router = createBrowserRouter([
       { path: "contact", element: <ContactPage /> },
       { path: "privacy", element: <PrivacyPage /> },
       { path: "terms", element: <TermsPage /> },
+      { path: "dashboard", element: <DashboardPage /> },
+      { path: "verify-email", element: <VerifyEmailPage /> },
+      { path: "forgot-password", element: <ForgotPasswordPage /> },
+      { path: "reset-password", element: <ResetPasswordPage /> },
     ],
   },
 ]);

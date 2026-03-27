@@ -1,4 +1,6 @@
 import { motion } from "motion/react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -10,6 +12,18 @@ const fadeUp = {
 };
 
 export default function Hero() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+
+  const handleStart = (e) => {
+    e.preventDefault();
+    if (email) {
+      navigate(`/signup?email=${encodeURIComponent(email)}`);
+    } else {
+      navigate("/signup");
+    }
+  };
+
   return (
     <section className="hero" id="hero">
       {/* ── Background Video ── */}
@@ -49,10 +63,17 @@ export default function Hero() {
 
         {/* Email CTA */}
         <motion.div custom={3} initial="hidden" animate="visible" variants={fadeUp} className="hero__cta-block">
-          <div className="hero__input-group">
-            <input type="email" placeholder="your@email.com" className="hero__input" />
-            <button className="hero__cta-btn">Start for Free →</button>
-          </div>
+          <form onSubmit={handleStart} className="hero__input-group">
+            <input 
+              type="email" 
+              placeholder="your@email.com" 
+              className="hero__input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+            <button type="submit" className="hero__cta-btn">Start for Free →</button>
+          </form>
 
           {/* Social proof */}
           <div className="hero__social-proof">

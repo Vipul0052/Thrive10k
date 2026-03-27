@@ -30,7 +30,7 @@ export default function Footer() {
             <h4 className="footer__col-title">Company</h4>
             <Link to="/about" className="footer__link">About</Link>
             <Link to="/contact" className="footer__link">Contact</Link>
-            <a href="https://discord.gg" className="footer__link" target="_blank" rel="noopener noreferrer">Discord</a>
+            <a href="https://discord.gg/TuGXjPvYhZ" className="footer__link" target="_blank" rel="noopener noreferrer">Discord</a>
           </div>
 
           {/* Legal */}
