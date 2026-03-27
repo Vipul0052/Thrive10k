@@ -91,7 +91,11 @@ export default function VerifyEmailPage() {
     });
 
     if (verifyError) {
-      setError(verifyError.message);
+      if (verifyError.message.toLowerCase().includes("token") || verifyError.message.toLowerCase().includes("invalid")) {
+        setError("Your verification code is incorrect or expired.");
+      } else {
+        setError(verifyError.message);
+      }
       setLoading(false);
     } else {
       navigate("/dashboard");

@@ -30,7 +30,7 @@ export default function SignupPage() {
     setError("");
     setLoading(true);
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -42,6 +42,9 @@ export default function SignupPage() {
 
     if (signUpError) {
       setError(signUpError.message);
+      setLoading(false);
+    } else if (data?.user?.identities?.length === 0) {
+      setError("An account with this email is already registered.");
       setLoading(false);
     } else {
       // Navigate to verify email page
