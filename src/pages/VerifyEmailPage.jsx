@@ -92,7 +92,7 @@ export default function VerifyEmailPage() {
 
     if (verifyError) {
       if (verifyError.message.toLowerCase().includes("token") || verifyError.message.toLowerCase().includes("invalid")) {
-        setError("Your verification code is incorrect or expired.");
+        setError("Invalid OTP. Please check the code and try again.");
       } else {
         setError(verifyError.message);
       }
