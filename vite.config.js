@@ -10,9 +10,6 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('recharts')) return 'vendor-charts';
-            if (id.includes('motion') || id.includes('lucide')) return 'vendor-ui';
-            if (id.includes('react') || id.includes('supabase')) return 'vendor-core';
             return 'vendor';
           }
         }
